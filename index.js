@@ -35,6 +35,14 @@ class P2PConnection extends Emitter {
     console.info(`broadcasting "${type}" event: ${JSON.stringify(message)}`);
     experimental.datPeers.broadcast({ type, message });
   }
+
+  async listPeers () {
+    return await experimental.datPeers.list();
+  }
+
+  async setSession (sessionData) {
+    return await experimental.datPeers.setSessionData(sessionData);
+  }
 }
 
 class Store {
@@ -60,7 +68,11 @@ class Page {
   }
 
   setRoomId (roomId) {
-    this.joinButton.innerHTML = `join #${roomId}`;
+    this.joinButton.querySelector("#join-button-text").innerHTML = `join #${roomId}`;
+  }
+
+  setRoomCount (count) {
+    this.joinButton.querySelector("#join-button-user-count").innerHTML = `${count} people inside`
   }
 
   fadeIn () {
@@ -199,7 +211,14 @@ page.fillInUsername(previousUsername);
 page.setRoomId(roomId);
 page.fadeIn();
 
+p2p.listPeers().then(peers => {
+  const count = peers.filter(peer => peer.sessionData.roomId === roomId).length;
+  page.setRoomCount(count);
+});
+
 page.onUserEnter(async username => {
+  await p2p.setSession({ username, roomId });
+
   page.showVideos();
   store.set("username", username);
 
