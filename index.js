@@ -154,7 +154,10 @@ class WebRTCConnection extends Emitter {
     this.peerConnection.addStream(userStream);
     this.peerConnection.addEventListener("addstream", e => {
       console.log(e);
-      this.trigger("receive_stream", e.stream);
+      this.trigger("add_stream", e.stream);
+    }, false);
+    this.peerConnection.addEventListener("removestream", e => {
+      console.log(e);
     }, false);
 
     this.peerConnection.createOffer(
@@ -208,7 +211,7 @@ page.onUserEnter(async username => {
   const conn = new WebRTCConnection(userStream);
 
   conn.on("ice_candidate", candidate => p2p.broadcast(`${roomId}:ICE_CANDIDATE`, candidate));
-  conn.on("receive_stream", stream => renderStream(stream));
+  conn.on("add_stream", stream => renderStream(stream));
   conn.on("create_offer", offer => {
     p2p.on(`receive:${roomId}:OFFER`, ({ message }) => {
       conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message), () => {
