@@ -217,38 +217,47 @@ p2p.listPeers().then(peers => {
 });
 
 page.onUserEnter(async username => {
-  await p2p.setSession({ username, roomId });
+  try {
+    await p2p.setSession({ username, roomId });
 
-  page.showVideos();
-  store.set("username", username);
+    page.showVideos();
+    store.set("username", username);
 
-  const userStream = await MediaDevices.getUserMediaStream();
+    const userStream = await MediaDevices.getUserMediaStream();
 
-  page.renderStream(userStream, username || "anonymous", true);
-  page.renderStream(userStream, username || "anonymous", false);
+    page.renderStream(userStream, username || "anonymous", true);
+    page.renderStream(userStream, username || "anonymous", false);
 
-  const conn = new WebRTCConnection(userStream);
+    const conn = new WebRTCConnection(userStream);
 
-  conn.on("ice_candidate", candidate => p2p.broadcast(`${roomId}:ICE_CANDIDATE`, candidate));
-  conn.on("add_stream", stream => renderStream(stream));
-  conn.on("create_offer", offer => {
-    p2p.on(`receive:${roomId}:OFFER`, ({ message }) => {
-      conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message), () => {
-        conn.peerConnection.createAnswer(localDescription => {
-          conn.peerConnection.setLocalDescription(localDescription);
-          p2p.broadcast(`${roomId}:ANSWER`, localDescription);
+    conn.on("ice_candidate", candidate => p2p.broadcast(`${roomId}:ICE_CANDIDATE`, candidate));
+    conn.on("add_stream", stream => renderStream(stream));
+    conn.on("create_offer", offer => {
+      p2p.on(`receive:${roomId}:OFFER`, ({ message }) => {
+        conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message), () => {
+          conn.peerConnection.createAnswer(localDescription => {
+            conn.peerConnection.setLocalDescription(localDescription);
+            p2p.broadcast(`${roomId}:ANSWER`, localDescription);
+          });
         });
       });
-    });
 
-    p2p.on(`receive:${roomId}:ANSWER`, ({ message }) => {
-      conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-    });
+      p2p.on(`receive:${roomId}:ANSWER`, ({ message }) => {
+        conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+      });
 
-    p2p.on(`receive:${roomId}:ICE_CANDIDATE`, ({ message }) => {
-      conn.peerConnection.addIceCandidate(new RTCIceCandidate(message));
-    });
+      p2p.on(`receive:${roomId}:ICE_CANDIDATE`, ({ message }) => {
+        conn.peerConnection.addIceCandidate(new RTCIceCandidate(message));
+      });
 
-    p2p.broadcast(`${roomId}:OFFER`, offer);
-  });
+      p2p.broadcast(`${roomId}:OFFER`, offer);
+    });
+  } catch (e) {
+    console.error(e);
+
+    // seems to be a beaker bug? needs investigation.
+    if (e.message === "experimental is not defined") {
+      window.location.reload();
+    }
+  }
 });
