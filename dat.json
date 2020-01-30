@@ -1,0 +1,8 @@
+{
+  "title": "dat-webrtc",
+  "experimental": {
+    "apis": [
+      "datPeers"
+    ]
+  }
+}
