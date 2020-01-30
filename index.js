@@ -226,12 +226,11 @@ page.onUserEnter(async username => {
     const userStream = await MediaDevices.getUserMediaStream();
 
     page.renderStream(userStream, username || "anonymous", true);
-    page.renderStream(userStream, username || "anonymous", false);
 
     const conn = new WebRTCConnection(userStream);
 
     conn.on("ice_candidate", candidate => p2p.broadcast(`${roomId}:ICE_CANDIDATE`, candidate));
-    conn.on("add_stream", stream => renderStream(stream));
+    conn.on("add_stream", stream => renderStream(stream, "👻", false));
     conn.on("create_offer", offer => {
       p2p.on(`receive:${roomId}:OFFER`, ({ message }) => {
         conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message), () => {
