@@ -37,6 +37,139 @@ class P2PConnection extends Emitter {
   }
 }
 
+class Store {
+  get (key, defaultValue) {
+    return window.localStorage.getItem(key) || defaultValue;
+  }
+
+  set (key, value) {
+    return window.localStorage.setItem(key, value);
+  }
+}
+
+class Page {
+  constructor () {
+    this.videosEl = document.querySelector("#videos");
+    this.joinEl = document.querySelector("#join");
+    this.joinInput = this.joinEl.querySelector("input");
+    this.joinButton = this.joinEl.querySelector("button");
+  }
+
+  fillInUsername (username) {
+    this.joinInput.value = username;
+  }
+
+  setRoomId (roomId) {
+    this.joinButton.innerHTML = `join #${roomId}`;
+  }
+
+  fadeIn () {
+    this.joinEl.style.opacity = 1;
+  }
+
+  onUserEnter (fn) {
+    this.joinEl.addEventListener("submit", e => {
+      e.preventDefault();
+      fn(e.target[0].value);
+    });
+  }
+
+  showVideos () {
+    this.joinEl.style.display = "none";
+  }
+
+  renderStream (stream, username, isUser = false) {
+    const container = document.createElement("div");
+    container.className = isUser
+      ? "videos__video videos__video--mirrored"
+      : "videos__video";
+
+    const video = document.createElement("video");
+    container.appendChild(video);
+
+    const overlay = document.createElement("div");
+    overlay.className = "videos__overlay";
+    container.appendChild(overlay);
+
+    const name = document.createElement("span");
+    name.className = "videos__overlay__username";
+    name.innerHTML = username;
+    overlay.appendChild(name);
+
+    if (!isUser) {
+      const mute = document.createElement("a");
+      mute.className = "videos__overlay__option";
+      mute.innerHTML = "mute me";
+      mute.href = "#!";
+      mute.onclick = e => {
+        e.preventDefault();
+        video.muted = !video.muted;
+        mute.innerHTML = video.muted ? "unmute me" : "mute me";
+      };
+      overlay.appendChild(mute);
+
+      const hide = document.createElement("a");
+      hide.className = "videos__overlay__option";
+      hide.innerHTML = "hide me";
+      hide.href = "#!";
+      hide.onclick = e => {
+        e.preventDefault();
+        video.style.opacity = hide.innerHTML === "hide me" ? 0 : 1;
+        hide.innerHTML = hide.innerHTML === "hide me" ? "unhide me" : "hide me";
+      };
+      overlay.appendChild(hide);
+    }
+
+    this.videosEl.appendChild(container);
+
+    video.src = window.URL.createObjectURL(stream);
+    video.play();
+  }
+}
+
+class MediaDevices {
+  static getUserMediaStream () {
+    return new Promise(async (resolve, reject) => {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasCamera = devices.some(device => device.kind === "videoinput");
+      const hasMic = devices.some(device => device.kind === "audioinput");
+      const request = { video: hasCamera, audio: hasMic };
+
+      navigator.getUserMedia(request, stream => resolve(stream), err => reject(err));
+    });
+  }
+}
+
+class WebRTCConnection extends Emitter {
+  constructor (userStream) {
+    super();
+
+    this.peerConnection = new RTCPeerConnection({ iceServers: [] });
+    this.peerConnection.onicecandidate = event => {
+      if (event.candidate) {
+        this.trigger("ice_candidate", event.candidate);
+      }
+    };
+
+    this.peerConnection.addStream(userStream);
+    this.peerConnection.addEventListener("addstream", e => {
+      console.log(e);
+      this.trigger("receive_stream", e.stream);
+    }, false);
+
+    this.peerConnection.createOffer(
+      offer => {
+        console.log(`local offer made:`);
+        console.log(offer);
+        this.trigger("create_offer", offer);
+      },
+      error => {
+        console.error(error);
+      },
+    );
+  }
+}
+
 const SDP_CONSTRAINTS = {
   optional: [],
   mandatory: {
@@ -45,128 +178,55 @@ const SDP_CONSTRAINTS = {
   },
 };
 
-const renderStream = (stream, username, isUser = false) => {
-  const container = document.createElement("div");
-  container.className = isUser
-    ? "videos__video videos__video--mirrored"
-    : "videos__video";
-
-  const video = document.createElement("video");
-  container.appendChild(video);
-
-  const overlay = document.createElement("div");
-  overlay.className = "videos__overlay";
-  container.appendChild(overlay);
-
-  const name = document.createElement("span");
-  name.className = "videos__overlay__username";
-  name.innerHTML = username;
-  overlay.appendChild(name);
-
-  if (!isUser) {
-    const mute = document.createElement("a");
-    mute.className = "videos__overlay__option";
-    mute.innerHTML = "mute me";
-    mute.href = "#!";
-    mute.onclick = e => {
-      e.preventDefault();
-      video.muted = !video.muted;
-      mute.innerHTML = video.muted ? "unmute me" : "mute me";
-    };
-    overlay.appendChild(mute);
-
-    const hide = document.createElement("a");
-    hide.className = "videos__overlay__option";
-    hide.innerHTML = "hide me";
-    hide.href = "#!";
-    hide.onclick = e => {
-      e.preventDefault();
-      video.style.opacity = hide.innerHTML === "hide me" ? 0 : 1;
-      hide.innerHTML = hide.innerHTML === "hide me" ? "unhide me" : "hide me";
-    };
-    overlay.appendChild(hide);
-  }
-
-  videosEl.appendChild(container);
-
-  video.src = window.URL.createObjectURL(stream);
-  video.play();
-}
-
 const id = () => {
   const array = new Uint32Array(1);
   return window.crypto.getRandomValues(array)[0];
 }
 
-const videosEl = document.querySelector("#videos");
-const joinEl = document.querySelector("#join");
-const joinInput = joinEl.querySelector("input");
-const joinButton = joinEl.querySelector("button");
-const roomId = window.location.hash.substr(1) || IdGenerator.generate();
-const username = window.localStorage.getItem("username") || "";
+const store = new Store();
+const page = new Page();
 const p2p = new P2PConnection();
+
+const roomId = window.location.hash.substr(1) || IdGenerator.generate();
+const previousUsername = store.get("username", "");
 
 window.location.hash = roomId;
 
-joinInput.value = username;
-joinButton.innerHTML = `join #${roomId}`;
+page.fillInUsername(previousUsername);
+page.setRoomId(roomId);
+page.fadeIn();
 
-joinEl.style.opacity = 1;
+page.onUserEnter(async username => {
+  page.showVideos();
+  store.set("username", username);
 
-joinEl.onsubmit = async (e) => {
-  e.preventDefault();
-  joinEl.style.display = "none";
-  window.localStorage.setItem("username", e.target[0].value);
+  const userStream = await MediaDevices.getUserMediaStream();
 
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const hasCamera = devices.some(device => device.kind === "videoinput");
-  const hasMic = devices.some(device => device.kind === "audioinput");
+  page.renderStream(userStream, username || "anonymous", true);
+  page.renderStream(userStream, username || "anonymous", false);
 
-  navigator.getUserMedia(
-    { video: hasCamera, audio: hasMic },
-    async userStream => {
-      renderStream(userStream, e.target[0].value || "anonymous", true);
-      renderStream(userStream, e.target[0].value || "anonymous", false);
+  const conn = new WebRTCConnection(userStream);
 
-      const pc = new RTCPeerConnection({ iceServers: [] });
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          p2p.broadcast(`${roomId}:ICE_CANDIDATE`, event.candidate);
-        }
-      };
+  conn.on("ice_candidate", candidate => p2p.broadcast(`${roomId}:ICE_CANDIDATE`, candidate));
+  conn.on("receive_stream", stream => renderStream(stream));
+  conn.on("create_offer", offer => {
+    p2p.on(`receive:${roomId}:OFFER`, ({ message }) => {
+      conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message), () => {
+        conn.peerConnection.createAnswer(localDescription => {
+          conn.peerConnection.setLocalDescription(localDescription);
+          p2p.broadcast(`${roomId}:ANSWER`, localDescription);
+        });
+      });
+    });
 
-      pc.addStream(userStream);
-      pc.addEventListener("addstream", e => { console.log(e); renderStream(e.stream); }, false);
+    p2p.on(`receive:${roomId}:ANSWER`, ({ message }) => {
+      conn.peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+    });
 
-      pc.createOffer(
-        offer => {
-          console.log(`local offer made:`);
-          console.log(offer);
+    p2p.on(`receive:${roomId}:ICE_CANDIDATE`, ({ message }) => {
+      conn.peerConnection.addIceCandidate(new RTCIceCandidate(message));
+    });
 
-          p2p.on(`receive:${roomId}:OFFER`, ({ message }) => {
-            pc.setRemoteDescription(new RTCSessionDescription(message), () => {
-              pc.createAnswer(localDescription => {
-                pc.setLocalDescription(localDescription);
-                p2p.broadcast(`${roomId}:ANSWER`, localDescription);
-              });
-            });
-          });
-
-          p2p.on(`receive:${roomId}:ANSWER`, ({ message }) => {
-            pc.setRemoteDescription(new RTCSessionDescription(message));
-          });
-
-          p2p.on(`receive:${roomId}:ICE_CANDIDATE`, ({ message }) => {
-            pc.addIceCandidate(new RTCIceCandidate(message));
-          });
-
-          p2p.broadcast(`${roomId}:OFFER`, offer);
-        },
-        error => {
-          console.error(error);
-        },
-      );
-    },
-    err => console.error(err)
-  );
-};
+    p2p.broadcast(`${roomId}:OFFER`, offer);
+  });
+});
