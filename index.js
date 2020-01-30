@@ -212,7 +212,7 @@ page.setRoomId(roomId);
 page.fadeIn();
 
 p2p.listPeers().then(peers => {
-  const count = peers.filter(peer => peer.sessionData.roomId === roomId).length;
+  const count = peers.filter(peer => peer.sessionData && peer.sessionData.roomId === roomId).length;
   page.setRoomCount(count);
 });
 
