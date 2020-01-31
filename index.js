@@ -209,6 +209,8 @@ const previousUsername = store.get("username", "");
 
 window.location.hash = roomId;
 
+p2p.listen();
+
 page.fillInUsername(previousUsername);
 page.setRoomId(roomId);
 page.fadeIn();
