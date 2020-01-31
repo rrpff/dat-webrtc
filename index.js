@@ -108,6 +108,8 @@ class Page {
     name.innerHTML = username;
     overlay.appendChild(name);
 
+    if (isUser) video.muted = true;
+
     if (!isUser) {
       const mute = document.createElement("a");
       mute.className = "videos__overlay__option";
